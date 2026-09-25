@@ -1,11 +1,15 @@
 
-# Titanic — End-to-End EDA, Classification & Regression
-'''
-This notebook follows the Masai/Zepto analyst-to-data-scientist workflow:
-load once, clean once, EDA, stratified split, leakage-safe preprocessing,
-three classifiers, imbalance comparison, Random Forest tuning/OOB score,
-regression side-task, model comparison, and a reloadable final pipeline.
-'''
+# %% [markdown]
+# # Titanic — End-to-End EDA, Classification & Regression
+#
+# This notebook follows the Masai/Zepto analyst-to-data-scientist workflow:
+# load once, clean once, EDA, stratified split, leakage-safe preprocessing,
+# three classifiers, imbalance comparison, Random Forest tuning/OOB score,
+# regression side-task, model comparison, and a reloadable final pipeline.
+
+# %%
+# If required, uncomment:
+# %pip install -U pandas numpy seaborn matplotlib scikit-learn imbalanced-learn joblib scipy
 
 from pathlib import Path
 import warnings
@@ -44,14 +48,15 @@ CSV_PATH = ROOT / "titanic.csv"
 OFFLINE_PATH = ROOT / "titanic.csv.offline"
 MODEL_PATH = ROOT / "saved_model.joblib"
 
-## 1. Load once and profile
+# %% [markdown]
+# ## 1. Load once and profile
+#
+# The first run attempts the Seaborn online dataset. It immediately saves a
+# local CSV and an offline fallback. Subsequent runs use the local CSV when it
+# exists, so the raw dataset is not independently reloaded in later sections.
 
-## The first run attempts the Seaborn online dataset. It immediately saves a
-##local CSV and an offline fallback. Subsequent runs use the local CSV when it
-##exists, so the raw dataset is not independently reloaded in later sections.
-
+# %%
 if CSV_PATH.exists():
-
     df_raw = pd.read_csv(CSV_PATH)
 else:
     try:
@@ -82,19 +87,19 @@ missing_report = pd.DataFrame({
 })
 display(missing_report)
 
-## 2. Missing-value strategy
+# %% [markdown]
+# ## 2. Missing-value strategy
+#
+# Rule:
+# - <5% missing: drop affected rows.
+# - 5–30% missing: impute.
+# - >30% missing: drop the column, unless there is a documented reason to
+#   encode missingness instead.
+#
+# The modeling pipeline also contains imputers as a safety mechanism, but the
+# explicit cleaning decision is made below from the observed training data.
 
-''' 
-Rule:
-- <5% missing: drop affected rows.
-- 5–30% missing: impute.
-- >30% missing: drop the column, unless there is a documented reason to
-  encode missingness instead.
-  
-
-The modeling pipeline also contains imputers as a safety mechanism, but the
-explicit cleaning decision is made below from the observed training data.
-'''
+# %%
 strategy_rows = []
 for col in df_raw.columns:
     pct = df_raw[col].isna().mean() * 100
@@ -132,7 +137,6 @@ if drop_row_cols:
 # Do NOT fit imputation statistics here: that would leak information across
 # the later train/test split. We record the decision now, then implement
 # imputation inside the modeling pipeline so it is fitted on training data only.
-
 imputed_cols = strategy_df.loc[strategy_df.strategy == "impute", "column"].tolist()
 
 print("Dropped columns:", drop_cols)
@@ -141,7 +145,10 @@ print("Columns to be imputed later inside the training-only pipeline:", imputed_
 print("Remaining missing values after explicit cleaning decisions:")
 display(df.isna().sum())
 
-## 3. Univariate analysis: age and fare
+# %% [markdown]
+# ## 3. Univariate analysis: age and fare
+
+# %%
 fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 sns.histplot(df["age"], kde=True, ax=axes[0, 0])
 axes[0, 0].set_title("Age distribution")
@@ -163,7 +170,10 @@ for col in ["age", "fare"]:
     print(f"{col}: mean={mean:.3f}, median={median:.3f}, mode={mode:.3f}, skew={skew:.3f}")
     print("Interpretation:", "right-skewed" if skew > 0.5 else "left-skewed" if skew < -0.5 else "approximately symmetric")
 
-## 4. Bivariate survival analysis
+# %% [markdown]
+# ## 4. Bivariate survival analysis
+
+# %%
 def survival_rate_table(group_cols):
     out = df.groupby(group_cols, dropna=False)["survived"].agg(["mean", "count"])
     out["survival_rate_pct"] = out["mean"] * 100
@@ -187,9 +197,12 @@ plt.tight_layout()
 plt.savefig(CHART_DIR / "02_bivariate_survival.png", dpi=160, bbox_inches="tight")
 plt.show()
 
-## 5. Correlation analysis
-## Correlation is restricted to exactly:
-## survived, pclass, age, sibsp, parch, fare.
+# %% [markdown]
+# ## 5. Correlation analysis
+# Correlation is restricted to exactly:
+# survived, pclass, age, sibsp, parch, fare.
+
+# %%
 corr_cols = ["survived", "pclass", "age", "sibsp", "parch", "fare"]
 corr = df[corr_cols].corr()
 display(corr)
@@ -201,12 +214,13 @@ plt.tight_layout()
 plt.savefig(CHART_DIR / "03_required_correlation_heatmap.png", dpi=160, bbox_inches="tight")
 plt.show()
 
-## 6. Multivariate charts
-'''
-Four distinct multivariate charts are produced. Each interpretation is
-written as four sentences so the README/notebook satisfies the acceptance
-criterion.
-'''
+# %% [markdown]
+# ## 6. Multivariate charts
+# Four distinct multivariate charts are produced. Each interpretation is
+# written as four sentences so the README/notebook satisfies the acceptance
+# criterion.
+
+# %%
 # Chart 1
 plt.figure(figsize=(9, 6))
 sns.scatterplot(data=df, x="age", y="fare", hue="survived", size="pclass", alpha=0.7)
@@ -214,13 +228,16 @@ plt.title("Age vs fare, survival and passenger class")
 plt.tight_layout()
 plt.savefig(CHART_DIR / "04_age_fare_survival_class.png", dpi=160, bbox_inches="tight")
 plt.show()
-'''
-**Interpretation — Chart 1:** The plot compares age and fare while encoding
-survival and passenger class. Fare values are concentrated toward the lower
-end with a smaller number of high-fare observations. Passenger class is
-associated with fare, so the visual shows substantial overlap but different
-fare concentrations by class. Survival is not determined by one variable
-alone, which motivates the multivariable predictive models.'''
+
+# %% [markdown]
+# **Interpretation — Chart 1:** The plot compares age and fare while encoding
+# survival and passenger class. Fare values are concentrated toward the lower
+# end with a smaller number of high-fare observations. Passenger class is
+# associated with fare, so the visual shows substantial overlap but different
+# fare concentrations by class. Survival is not determined by one variable
+# alone, which motivates the multivariable predictive models.
+
+# %%
 # Chart 2
 plt.figure(figsize=(10, 6))
 sns.boxplot(data=df, x="pclass", y="age", hue="survived")
@@ -228,13 +245,15 @@ plt.title("Age distribution by class and survival")
 plt.tight_layout()
 plt.savefig(CHART_DIR / "05_age_class_survival.png", dpi=160, bbox_inches="tight")
 plt.show()
-'''
-**Interpretation — Chart 2:** Age distributions differ across passenger
-classes. The survival hue shows that the age composition of survivors and
-non-survivors is not identical within each class. The class groups also have
-different spreads and central tendencies. This indicates that class and age
-can provide complementary information for classification.
-'''
+
+# %% [markdown]
+# **Interpretation — Chart 2:** Age distributions differ across passenger
+# classes. The survival hue shows that the age composition of survivors and
+# non-survivors is not identical within each class. The class groups also have
+# different spreads and central tendencies. This indicates that class and age
+# can provide complementary information for classification.
+
+# %%
 # Chart 3
 plt.figure(figsize=(10, 6))
 sns.violinplot(data=df, x="sex", y="fare", hue="survived", split=True)
@@ -242,13 +261,15 @@ plt.title("Fare distribution by sex and survival")
 plt.tight_layout()
 plt.savefig(CHART_DIR / "06_fare_sex_survival.png", dpi=160, bbox_inches="tight")
 plt.show()
-'''
-**Interpretation — Chart 3:** Fare distributions vary substantially across
-the sex groups. Within each sex group, survivors and non-survivors show
-different fare distributions. The long upper tails reflect a small number
-of expensive tickets. This supports keeping fare as a continuous predictor
-rather than reducing it to a few arbitrary categories.
-'''
+
+# %% [markdown]
+# **Interpretation — Chart 3:** Fare distributions vary substantially across
+# the sex groups. Within each sex group, survivors and non-survivors show
+# different fare distributions. The long upper tails reflect a small number
+# of expensive tickets. This supports keeping fare as a continuous predictor
+# rather than reducing it to a few arbitrary categories.
+
+# %%
 # Chart 4
 plt.figure(figsize=(10, 6))
 sns.pointplot(data=df, x="pclass", y="survived", hue="embarked", errorbar=None)
@@ -256,26 +277,33 @@ plt.title("Survival rate by class and embarkation port")
 plt.tight_layout()
 plt.savefig(CHART_DIR / "07_class_embarked_survival.png", dpi=160, bbox_inches="tight")
 plt.show()
-'''
-**Interpretation — Chart 4:** Survival rates vary across passenger class and
-embarkation port. The class separation is visible within multiple port
-groups, showing that class remains an important conditioning variable.
-Some port groups have fewer observations, so their displayed rates should be
-interpreted with their sample counts in mind. The combined view demonstrates
-why multivariate analysis is more informative than a single grouped rate.'''
-## 7. Exploratory standardization check for age and fare
-##z = (x - mean) / standard deviation
+
+# %% [markdown]
+# **Interpretation — Chart 4:** Survival rates vary across passenger class and
+# embarkation port. The class separation is visible within multiple port
+# groups, showing that class remains an important conditioning variable.
+# Some port groups have fewer observations, so their displayed rates should be
+# interpreted with their sample counts in mind. The combined view demonstrates
+# why multivariate analysis is more informative than a single grouped rate.
+
+# %% [markdown]
+# ## 7. Exploratory standardization check for age and fare
+# z = (x - mean) / standard deviation
+
+# %%
 for col in ["age", "fare"]:
     z = (df[col] - df[col].mean()) / df[col].std(ddof=0)
     print(col, "z mean:", round(z.mean(), 6), "z std:", round(z.std(ddof=0), 6))
 
-## 8. Train/test split FIRST, then preprocessing
-'''
-`survived` is the classification target. We stratify on the target so the
-class proportions are preserved as closely as possible between train/test.
-All learned preprocessing is fitted only on the training split through the
-pipeline.
-'''
+# %% [markdown]
+# ## 8. Train/test split FIRST, then preprocessing
+#
+# `survived` is the classification target. We stratify on the target so the
+# class proportions are preserved as closely as possible between train/test.
+# All learned preprocessing is fitted only on the training split through the
+# pipeline.
+
+# %%
 target = "survived"
 features = [
     "pclass", "sex", "age", "sibsp", "parch",
@@ -314,7 +342,10 @@ preprocessor = ColumnTransformer([
     ("cat", categorical_pipe, categorical_features)
 ])
 
-## 9. Train three classifiers on the identical split
+# %% [markdown]
+# ## 9. Train three classifiers on the identical split
+
+# %%
 models = {
     "Logistic Regression": LogisticRegression(max_iter=2000, random_state=RANDOM_STATE),
     "Decision Tree": DecisionTreeClassifier(
@@ -352,7 +383,10 @@ for name, estimator in models.items():
 classification_df = pd.DataFrame(classification_results)
 display(classification_df)
 
-### Decision-tree visualization
+# %% [markdown]
+# ### Decision-tree visualization
+
+# %%
 tree_pipe = classification_pipelines["Decision Tree"]
 tree_model = tree_pipe.named_steps["model"]
 feature_names = tree_pipe.named_steps["preprocess"].get_feature_names_out()
@@ -371,7 +405,10 @@ plt.tight_layout()
 plt.savefig(CHART_DIR / "08_decision_tree.png", dpi=180, bbox_inches="tight")
 plt.show()
 
-### ROC curves
+# %% [markdown]
+# ### ROC curves
+
+# %%
 plt.figure(figsize=(8, 6))
 for name, pipe in classification_pipelines.items():
     prob = pipe.predict_proba(X_test)[:, 1]
@@ -387,13 +424,14 @@ plt.tight_layout()
 plt.savefig(CHART_DIR / "09_roc_curves.png", dpi=160, bbox_inches="tight")
 plt.show()
 
-## 10. Three-way class-imbalance comparison
-'''
-Baseline = no imbalance handling; balanced = class_weight='balanced';
-SMOTE = synthetic minority oversampling. SMOTE is placed inside an
-imbalanced-learn pipeline so resampling occurs during fitting rather than
-contaminating the held-out test set.
-'''
+# %% [markdown]
+# ## 10. Three-way class-imbalance comparison
+# Baseline = no imbalance handling; balanced = class_weight='balanced';
+# SMOTE = synthetic minority oversampling. SMOTE is placed inside an
+# imbalanced-learn pipeline so resampling occurs during fitting rather than
+# contaminating the held-out test set.
+
+# %%
 imbalance_estimators = {
     "baseline": LogisticRegression(max_iter=2000, random_state=RANDOM_STATE),
     "class_weight_balanced": LogisticRegression(
@@ -440,23 +478,24 @@ for name, pipe in {
 
 imbalance_df = pd.DataFrame(imbalance_results)
 display(imbalance_df)
-'''
-**Interpretation:** Compare recall and F1 alongside accuracy rather than
-relying on accuracy alone because the target classes are not perfectly
-balanced. The class-weighted model changes the classifier's treatment of
-minority-class errors without changing the underlying training rows.
-SMOTE changes the training distribution by generating minority-class
-examples, while the untouched test set remains the same. The written
-recommendation should be based on the actual table produced above, with
-particular attention to the metric that matters for the project's stated
-objective.
-'''
-## 11. Random Forest GridSearchCV + OOB score
-'''
-`oob_score=True` is used because the acceptance criteria require an OOB
-score to be reported.
-'''
 
+# %% [markdown]
+# **Interpretation:** Compare recall and F1 alongside accuracy rather than
+# relying on accuracy alone because the target classes are not perfectly
+# balanced. The class-weighted model changes the classifier's treatment of
+# minority-class errors without changing the underlying training rows.
+# SMOTE changes the training distribution by generating minority-class
+# examples, while the untouched test set remains the same. The written
+# recommendation should be based on the actual table produced above, with
+# particular attention to the metric that matters for the project's stated
+# objective.
+
+# %% [markdown]
+# ## 11. Random Forest GridSearchCV + OOB score
+# `oob_score=True` is used because the acceptance criteria require an OOB
+# score to be reported.
+
+# %%
 rf_pipe = Pipeline([
     ("preprocess", preprocessor),
     ("model", RandomForestClassifier(
@@ -502,12 +541,13 @@ best_rf_metrics = {
 }
 display(pd.DataFrame([best_rf_metrics]))
 
-## 12. Regression side-task — predict fare
-'''
-Fare is the regression target. Survived is excluded from predictors to avoid
-using the classification target as an input. We report MAE, RMSE, R² and
-adjusted R², plus a residual plot and a simple heteroscedasticity check.
-'''
+# %% [markdown]
+# ## 12. Regression side-task — predict fare
+# Fare is the regression target. Survived is excluded from predictors to avoid
+# using the classification target as an input. We report MAE, RMSE, R² and
+# adjusted R², plus a residual plot and a simple heteroscedasticity check.
+
+# %%
 reg_target = "fare"
 reg_features = [
     "pclass", "sex", "age", "sibsp", "parch",
@@ -595,11 +635,12 @@ if bp_pvalue < 0.05:
 else:
     print("Diagnostic conclusion: the test does not provide strong evidence of non-constant residual variance at the 5% level.")
 
-## 13. Final model comparison
-'''
-Classification and regression metrics are kept as separate metric groups;
-they are not collapsed into one score.
-'''
+# %% [markdown]
+# ## 13. Final model comparison
+# Classification and regression metrics are kept as separate metric groups;
+# they are not collapsed into one score.
+
+# %%
 final_classification = classification_df.copy()
 final_classification["model_type"] = "classification"
 
@@ -610,12 +651,13 @@ final_regression["model_type"] = "regression"
 display(final_classification)
 display(final_regression)
 
-## 14. Save the complete fitted classification pipeline
-'''
-The saved artifact contains preprocessing + estimator together and can be
-reloaded to predict on raw new rows with the same columns.
+# %% [markdown]
+# ## 14. Save the complete fitted classification pipeline
+# The saved artifact contains preprocessing + estimator together and can be
+# reloaded to predict on raw new rows with the same columns.
+
+# %%
 # Save the tuned Random Forest as the final fitted classification artifact.
-'''
 joblib.dump(best_rf, MODEL_PATH)
 print("Saved:", MODEL_PATH)
 
@@ -624,11 +666,12 @@ loaded_model = joblib.load(MODEL_PATH)
 sample_predictions = loaded_model.predict(X_test.head(5))
 print("Reloaded model predictions:", sample_predictions)
 
-## 15. New-data smoke test
-'''
-This demonstrates that the saved artifact accepts raw rows with the same
-feature schema and performs preprocessing internally.
-'''
+# %% [markdown]
+# ## 15. New-data smoke test
+# This demonstrates that the saved artifact accepts raw rows with the same
+# feature schema and performs preprocessing internally.
+
+# %%
 new_raw = X_test.head(3).copy()
 new_predictions = loaded_model.predict(new_raw)
 new_probabilities = loaded_model.predict_proba(new_raw)[:, 1]
@@ -638,12 +681,12 @@ display(pd.DataFrame({
     "survival_probability": new_probabilities
 }))
 
-## Final written conclusion
-'''
-Do not choose a model from memory or by a generic rule. Use the generated
-classification table, imbalance table, GridSearchCV results, and OOB score.
-State which model/strategy you select for the project's objective and cite
-the exact metrics that support that selection. For the regression side-task,
-report MAE/RMSE/R²/Adjusted R² and the residual/heteroscedasticity diagnostic
-separately.
-'''
+# %% [markdown]
+# ## Final written conclusion
+#
+# Do not choose a model from memory or by a generic rule. Use the generated
+# classification table, imbalance table, GridSearchCV results, and OOB score.
+# State which model/strategy you select for the project's objective and cite
+# the exact metrics that support that selection. For the regression side-task,
+# report MAE/RMSE/R²/Adjusted R² and the residual/heteroscedasticity diagnostic
+# separately.

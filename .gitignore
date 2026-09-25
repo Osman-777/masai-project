@@ -1,0 +1,31 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+.venv/
+
+# Environment variables
+.env
+.env.*
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Database / local generated files
+*.db
+*.sqlite
+*.sqlite3
+
+# ChromaDB generated storage
+support_assistant/chroma_db/
+support_assistant/chroma/
+support_assistant/chroma_store/
+
+# Temporary files
+*.tmp
+*.log
+
